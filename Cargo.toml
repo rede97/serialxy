@@ -1,0 +1,17 @@
+[package]
+name = "serialxy"
+edition = "2018"
+authors = ["Xiaoqing Ma <rede1997@outlook.com>"]
+license = "MIT"
+description = "A proxy tool to help you to connect remote serial port by telnet"
+homepage = "https://github.com/rede97/lser"
+repository = "https://github.com/rede97/lser"
+include = ["Cargo.toml", "src/**/*.rs", "README.md"]
+keywords = ["serial", "tty", "UART"]
+readme = "README.md"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures = "0.3.19"
+tokio = { version = "1", features = ["full"] }
+tokio-serial = "5.4.1"
