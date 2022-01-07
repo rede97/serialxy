@@ -22,7 +22,8 @@ $ serialxy /dev/ttyUSB1,115200
 $ telnet remote-ip 8722
 ^]
 telnet> mode character
-# You can use telnet connect to your serial port as same as using serial port directly
 ```
+
+* Then you can use telnet connect to your serial port as same as using serial port directly.
 
 ![example](example.png)
