@@ -171,7 +171,7 @@ async fn main() -> Result<()> {
                 },
 
                 "-h" => {
-                    let usage = "Usage: serialxy seiral-name [-c remote-ip] [-p port]\n\tserial-name: like COM1,115200 /dev/ttyUSB0, the default baudrate if 115200\n\t-c\tclient mode, forward data to local serial-port\n\t-p\tspecific server-port, the default port is 8722\n\t-h\thelp\n";
+                    let usage = "Usage: serialxy seiral-name [-c remote-ip] [-p port]\n\tserial-name: like 'COM1,115200' or '/dev/ttyUSB0', the default baudrate if 115200\n\t-c\tclient mode, forward data to local serial-port\n\t-p\tspecific server-port, the default port is 8722\n\t-h\thelp\n";
                     print!("{}", usage);
                     return Ok(());
                 }
@@ -198,7 +198,7 @@ async fn main() -> Result<()> {
 
     match serial_cfg {
         None => {
-            println!("error: no serial port specified!");
+            println!("error: no serial port specified!, try '-h' for more information");
             return Ok(());
         }
         Some(serial_cfg) => match remote_ip {

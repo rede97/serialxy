@@ -1,11 +1,12 @@
 [package]
 name = "serialxy"
+version = "0.1.0"
 edition = "2018"
 authors = ["Xiaoqing Ma <rede1997@outlook.com>"]
 license = "MIT"
 description = "A proxy tool to help you to connect remote serial port by telnet"
-homepage = "https://github.com/rede97/lser"
-repository = "https://github.com/rede97/lser"
+homepage = "https://github.com/rede97/serialxy"
+repository = "https://github.com/rede97/serialxy"
 include = ["Cargo.toml", "src/**/*.rs", "README.md"]
 keywords = ["serial", "tty", "UART"]
 readme = "README.md"
