@@ -63,7 +63,8 @@ async fn exchange(
                         }
                     }
                     Err(e) => {
-                        return Err(e.to_string());
+                        println!("error: {}", e);
+                        return Ok(())
                     }
                 }
             }
@@ -79,7 +80,8 @@ async fn exchange(
                                 }
                             }
                             Err(e) => {
-                                return Err(e.to_string());
+                                println!("error: {}", e);
+                                return Ok(())
                             }
                         }
                     }
@@ -198,7 +200,7 @@ async fn main() -> Result<()> {
 
     match serial_cfg {
         None => {
-            println!("error: no serial port specified!, try '-h' for more information");
+            println!("error: no serial port specified! Try '-h' for more information");
             return Ok(());
         }
         Some(serial_cfg) => match remote_ip {
