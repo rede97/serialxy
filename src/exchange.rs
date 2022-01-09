@@ -106,7 +106,7 @@ pub fn exchange(
                                         }
                                         Err(ref err) if interrupted(err) => continue,
                                         Err(err) => {
-                                            println!("error: {}", err.to_string());
+                                            println!("error: {:?}", err.kind());
                                             break 'event_loop;
                                         }
                                     }
@@ -168,7 +168,7 @@ pub fn exchange(
                                 }
                                 Err(ref err) if interrupted(err) => continue,
                                 Err(err) => {
-                                    println!("error: {}", err.to_string());
+                                    println!("error: {:?}", err.kind());
                                     break 'event_loop;
                                 }
                             }
