@@ -15,6 +15,10 @@ fn interrupted(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Interrupted
 }
 
+fn disconnect(err: &io::Error) -> bool {
+    err.kind() == io::ErrorKind::ConnectionAborted
+}
+
 struct Buffer {
     buff: Vec<u8>,
     idx: usize,
@@ -63,7 +67,7 @@ pub fn exchange(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut poll = Poll::new()?;
     let mut events = Events::with_capacity(32);
-    
+
     #[cfg(unix)]
     serial
         .set_exclusive(false)
@@ -105,6 +109,9 @@ pub fn exchange(
                                             break;
                                         }
                                         Err(ref err) if interrupted(err) => continue,
+                                        Err(ref err) if disconnect(err) => {
+                                            break 'event_loop;
+                                        }
                                         // Other errors we'll consider fatal.
                                         Err(err) => return Err(Box::new(err)),
                                     }
@@ -165,6 +172,9 @@ pub fn exchange(
                                     break;
                                 }
                                 Err(ref err) if interrupted(err) => continue,
+                                Err(ref err) if disconnect(err) => {
+                                    break 'event_loop;
+                                }
                                 // Other errors we'll consider fatal.
                                 Err(err) => return Err(Box::new(err)),
                             }
