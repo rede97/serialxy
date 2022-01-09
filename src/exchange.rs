@@ -15,10 +15,6 @@ fn interrupted(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Interrupted
 }
 
-fn disconnect(err: &io::Error) -> bool {
-    err.kind() == io::ErrorKind::ConnectionAborted
-}
-
 struct Buffer {
     buff: Vec<u8>,
     idx: usize,
@@ -109,11 +105,10 @@ pub fn exchange(
                                             break;
                                         }
                                         Err(ref err) if interrupted(err) => continue,
-                                        Err(ref err) if disconnect(err) => {
+                                        Err(err) => {
+                                            println!("error: {}", err.to_string());
                                             break 'event_loop;
                                         }
-                                        // Other errors we'll consider fatal.
-                                        Err(err) => return Err(Box::new(err)),
                                     }
                                 }
                                 Err(ref err) if would_block(err) => {
@@ -172,11 +167,10 @@ pub fn exchange(
                                     break;
                                 }
                                 Err(ref err) if interrupted(err) => continue,
-                                Err(ref err) if disconnect(err) => {
+                                Err(err) => {
+                                    println!("error: {}", err.to_string());
                                     break 'event_loop;
                                 }
-                                // Other errors we'll consider fatal.
-                                Err(err) => return Err(Box::new(err)),
                             }
                         }
                     }
