@@ -63,7 +63,8 @@ pub fn exchange(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut poll = Poll::new()?;
     let mut events = Events::with_capacity(32);
-
+    
+    #[cfg(unix)]
     serial
         .set_exclusive(false)
         .expect("Unable to set serial port exclusive to false");
