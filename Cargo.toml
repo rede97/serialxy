@@ -23,7 +23,7 @@ readme = 'README.md'
 mio-serial = "5.0.1"
 
 [dependencies.mio]
-version = '0.7'
+version = '0.8'
 features = [
     'os-poll',
     'os-ext',

@@ -164,28 +164,6 @@ fn main() {
                         return;
                     }
                 },
-                "-b" => match args.next() {
-                    Some(size) => {
-                        buffer_size = match size.parse::<usize>() {
-                            Ok(buffer_size) => {
-                                if buffer_size < 512 {
-                                    println!("warning: buffer size should more than 512 bytes");
-                                    512
-                                } else {
-                                    buffer_size
-                                }
-                            }
-                            Err(e) => {
-                                println!("error: {}", e);
-                                return Ok(());
-                            }
-                        };
-                    }
-                    None => {
-                        println!("error: please specific buffer size");
-                        return Ok(());
-                    }
-                },
 
                 "-h" => {
                     print_usage(&program);
