@@ -43,9 +43,13 @@ impl SerialConfig {
 async fn exchange(
     mut socket: TcpStream,
     mut serial: SerialStream,
+    buff_size: usize,
 ) -> std::result::Result<(), String> {
-    let mut socket_rx_buffer: [u8; 128] = [0; 128];
-    let mut serial_rx_buffer: [u8; 128] = [0; 128];
+    let mut socket_rx_buffer: Vec<u8> = Vec::with_capacity(buff_size);
+    socket_rx_buffer.resize(buff_size, 0);
+    let mut serial_rx_buffer: Vec<u8> = Vec::with_capacity(buff_size);
+    serial_rx_buffer.resize(buff_size, 0);
+
     loop {
         tokio::select! {
             socket_nread = socket.read(&mut socket_rx_buffer) => {
@@ -95,7 +99,11 @@ async fn exchange(
     Ok(())
 }
 
-async fn start_server(ip: SocketAddr, serial_cfg: SerialConfig) -> std::result::Result<(), String> {
+async fn start_server(
+    ip: SocketAddr,
+    serial_cfg: SerialConfig,
+    buffer_size: usize,
+) -> std::result::Result<(), String> {
     let listener = match TcpListener::bind(ip).await {
         Ok(l) => l,
         Err(e) => {
@@ -108,7 +116,7 @@ async fn start_server(ip: SocketAddr, serial_cfg: SerialConfig) -> std::result::
             Ok((socket, client_addr)) => {
                 println!("Accept {}", client_addr);
                 match tokio_serial::new(&serial_cfg.name, serial_cfg.baudrate).open_native_async() {
-                    Ok(serial) => match exchange(socket, serial).await {
+                    Ok(serial) => match exchange(socket, serial, buffer_size).await {
                         Ok(_) => {
                             println!("Disconnect {}", client_addr);
                         }
@@ -131,13 +139,25 @@ async fn start_server(ip: SocketAddr, serial_cfg: SerialConfig) -> std::result::
     }
 }
 
+fn print_usage(program: &str) {
+    let help_info = r#"
+    serial-name:    like 'COM1,115200' or '/dev/ttyUSB0', the default baudrate is 115200
+    -c              client mode, forward data to local serial-port
+    -p              specific server-port, the default port is 8722
+    -b              buffer size, 512 bytes by default
+    -h              help
+"#;
+    print!("Usage: {} serial-name [ options ]{}", program, help_info);
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut args = env::args();
     let mut remote_ip: Option<SocketAddr> = None;
     let mut server_port = 8722;
     let mut serial_cfg: Option<SerialConfig> = None;
-    args.next();
+    let mut buffer_size = 1024;
+    let program = args.next().unwrap();
     loop {
         match args.next() {
             Some(arg) => match arg.as_str() {
@@ -171,10 +191,31 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                 },
+                "-b" => match args.next() {
+                    Some(size) => {
+                        buffer_size = match size.parse::<usize>() {
+                            Ok(buffer_size) => {
+                                if buffer_size < 512 {
+                                    println!("warning: buffer size should more than 512 bytes");
+                                    512
+                                } else {
+                                    buffer_size
+                                }
+                            }
+                            Err(e) => {
+                                println!("error: {}", e);
+                                return Ok(());
+                            }
+                        };
+                    }
+                    None => {
+                        println!("error: please specific buffer size");
+                        return Ok(());
+                    }
+                },
 
                 "-h" => {
-                    let usage = "Usage: serialxy seiral-name [-c remote-ip] [-p port]\n\tserial-name: like 'COM1,115200' or '/dev/ttyUSB0', the default baudrate if 115200\n\t-c\tclient mode, forward data to local serial-port\n\t-p\tspecific server-port, the default port is 8722\n\t-h\thelp\n";
-                    print!("{}", usage);
+                    print_usage(&program);
                     return Ok(());
                 }
 
@@ -212,7 +253,7 @@ async fn main() -> Result<()> {
                     match tokio_serial::new(&serial_cfg.name, serial_cfg.baudrate)
                         .open_native_async()
                     {
-                        Ok(serial) => match exchange(socket, serial).await {
+                        Ok(serial) => match exchange(socket, serial, buffer_size).await {
                             Ok(_) => {
                                 println!("Disconnect {}", remote_ip);
                             }
@@ -233,7 +274,7 @@ async fn main() -> Result<()> {
             None => {
                 match ("0.0.0.0", server_port).to_socket_addrs() {
                     Ok(mut ips) => match ips.next() {
-                        Some(ip) => match start_server(ip, serial_cfg).await {
+                        Some(ip) => match start_server(ip, serial_cfg, buffer_size).await {
                             Err(e) => {
                                 println!("error: {}", e);
                             }
