@@ -43,6 +43,7 @@ const SERVER: Token = Token(0);
 fn start_server(
     ipaddr: SocketAddr,
     serial_cfg: SerialConfig,
+    buffer_size: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create a poll instance.
     let mut poll = Poll::new()?;
@@ -78,7 +79,7 @@ fn start_server(
 
                     let serial = mio_serial::new(serial_cfg.name.as_str(), serial_cfg.baudrate)
                         .open_native_async()?;
-                    exchange::exchange(socket, serial)?;
+                    exchange::exchange(socket, serial, buffer_size)?;
                     println!("Disconnect: {}", addr);
                     poll.registry()
                         .register(&mut server, SERVER, Interest::READABLE)?;
@@ -90,12 +91,24 @@ fn start_server(
     }
 }
 
+fn print_usage(program: &str) {
+    let help_info = r#"
+    serial-name:    like 'COM1,115200' or '/dev/ttyUSB0', the default baudrate is 115200
+    -c              client mode, forward data to local serial-port
+    -p              specific server-port, the default port is 8722
+    -b              buffer size, 512 bytes by default
+    -h              help
+"#;
+    print!("Usage: {} serial-name [ options ]{}", program, help_info);
+}
+
 fn main() {
     let mut args = env::args();
     let mut remote_ip: Option<SocketAddr> = None;
     let mut server_port = 8722;
     let mut serial_cfg: Option<SerialConfig> = None;
-    args.next();
+    let mut buffer_size = 512;
+    let program = args.next().unwrap();
     loop {
         match args.next() {
             Some(arg) => match arg.as_str() {
@@ -129,10 +142,31 @@ fn main() {
                         return;
                     }
                 },
+                "-b" => match args.next() {
+                    Some(buff_size) => {
+                        buffer_size = match buff_size.parse::<usize>() {
+                            Ok(buffer_size) => {
+                                if buffer_size < 512 {
+                                    println!("warning: buffer size should greater than 512 bytes");
+                                    512
+                                } else {
+                                    buffer_size
+                                }
+                            }
+                            Err(e) => {
+                                println!("error: {}", e);
+                                return;
+                            }
+                        };
+                    }
+                    None => {
+                        println!("error: please specific port number");
+                        return;
+                    }
+                },
 
                 "-h" => {
-                    let usage = "Usage: serialxy seiral-name [-c remote-ip] [-p port]\n\tserial-name: like 'COM1,115200' or '/dev/ttyUSB0', the default baudrate if 115200\n\t-c\tclient mode, forward data to local serial-port\n\t-p\tspecific server-port, the default port is 8722\n\t-h\thelp\n";
-                    print!("{}", usage);
+                    print_usage(&program);
                     return;
                 }
 
@@ -173,7 +207,7 @@ fn main() {
                                 &serial_cfg.name, &serial_cfg.baudrate, e.description
                             );
                         }
-                        Ok(serial) => match exchange(socket, serial) {
+                        Ok(serial) => match exchange(socket, serial, buffer_size) {
                             Err(e) => {
                                 println!("error: {}", e.to_string());
                             }
@@ -192,7 +226,7 @@ fn main() {
                     None => {
                         println!("error: invaild ip address");
                     }
-                    Some(ipaddr) => match start_server(ipaddr, serial_cfg) {
+                    Some(ipaddr) => match start_server(ipaddr, serial_cfg, buffer_size) {
                         Err(e) => {
                             println!("error: {}", e.to_string());
                         }

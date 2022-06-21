@@ -5,7 +5,6 @@ use std::io::{Read, Write};
 
 const SOCKET: Token = Token(0);
 const SERIAL: Token = Token(1);
-const BUFFER_SIZE: usize = 512;
 
 fn would_block(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::WouldBlock
@@ -68,6 +67,7 @@ impl Buffer {
 pub fn exchange(
     mut socket: TcpStream,
     mut serial: SerialStream,
+    buffer_size: usize,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut poll = Poll::new()?;
     let mut events = Events::with_capacity(32);
@@ -77,8 +77,8 @@ pub fn exchange(
         .set_exclusive(false)
         .expect("Unable to set serial port exclusive to false");
 
-    let mut socket_rx_buffer = Buffer::new(BUFFER_SIZE);
-    let mut serial_rx_buffer = Buffer::new(BUFFER_SIZE);
+    let mut socket_rx_buffer = Buffer::new(buffer_size);
+    let mut serial_rx_buffer = Buffer::new(buffer_size);
 
     poll.registry()
         .register(&mut socket, SOCKET, Interest::READABLE)?;

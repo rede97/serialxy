@@ -1,5 +1,5 @@
 # Serialxy
-Serial port proxy, a proxy tool to help you to connect remote serial port by telnet.
+Serial port proxy, a proxy tool can help you to connect remote serial port like telnet.
 
 * Support Linux, Windows
 * mio-only version, less dependencies, less binary size
