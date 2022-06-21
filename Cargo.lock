@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "serialxy"
-version = "0.1.3"
+version = "0.1.5"
 dependencies = [
  "mio",
  "mio-serial",
