@@ -1,19 +1,17 @@
+use exchange::exchange;
+use mio::net::TcpStream;
+use mio::{net::TcpListener, Token};
+use mio::{Events, Interest, Poll};
+use mio_serial::SerialPortBuilderExt;
 use std::env;
-use std::io::Cursor;
-use std::io::Result;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::net::{TcpListener, TcpStream};
-use tokio_serial;
-use tokio_serial::SerialPortBuilderExt;
-use tokio_serial::SerialStream;
 
+mod exchange;
 struct SerialConfig {
-    name: String,
-    baudrate: u32,
+    pub name: String,
+    pub baudrate: u32,
 }
 
 impl SerialConfig {
@@ -40,100 +38,54 @@ impl SerialConfig {
     }
 }
 
-async fn exchange(
-    mut socket: TcpStream,
-    mut serial: SerialStream,
-    buff_size: usize,
-) -> std::result::Result<(), String> {
-    let mut socket_rx_buffer: Vec<u8> = Vec::with_capacity(buff_size);
-    socket_rx_buffer.resize(buff_size, 0);
-    let mut serial_rx_buffer: Vec<u8> = Vec::with_capacity(buff_size);
-    serial_rx_buffer.resize(buff_size, 0);
+const SERVER: Token = Token(0);
 
-    loop {
-        tokio::select! {
-            socket_nread = socket.read(&mut socket_rx_buffer) => {
-                match socket_nread {
-                    Ok(nread) => {
-                        if nread == 0 {
-                            break;
-                        } else {
-                            match serial.write(&socket_rx_buffer[0..nread]).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    return Err(e.to_string());
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        println!("error: {}", e);
-                        return Ok(())
-                    }
-                }
-            }
-
-            serial_nread = serial.read(&mut serial_rx_buffer) => {
-                match serial_nread {
-                    Ok(nread) => {
-                        let mut cursor = Cursor::new(&serial_rx_buffer[0..nread]);
-                        match socket.write_buf(&mut cursor).await {
-                            Ok(nwrite) => {
-                                if nwrite == 0 {
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                println!("error: {}", e);
-                                return Ok(())
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        return Err(e.to_string());
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn start_server(
-    ip: SocketAddr,
+fn start_server(
+    ipaddr: SocketAddr,
     serial_cfg: SerialConfig,
     buffer_size: usize,
-) -> std::result::Result<(), String> {
-    let listener = match TcpListener::bind(ip).await {
-        Ok(l) => l,
-        Err(e) => {
-            return Err(format!("listen on {} failed, {}", ip.port(), e.to_string()));
-        }
-    };
-    println!("Server on {}", listener.local_addr().unwrap());
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Create a poll instance.
+    let mut poll = Poll::new()?;
+    // Create storage for events.
+    let mut events = Events::with_capacity(128);
+
+    let mut server = TcpListener::bind(ipaddr)?;
+
+    println!("Server on {}", ipaddr);
+    // Start listening for incoming connections.
+    poll.registry()
+        .register(&mut server, SERVER, Interest::READABLE)?;
+
+    // Start an event loop.
     loop {
-        match listener.accept().await {
-            Ok((socket, client_addr)) => {
-                println!("Accept {}", client_addr);
-                match tokio_serial::new(&serial_cfg.name, serial_cfg.baudrate).open_native_async() {
-                    Ok(serial) => match exchange(socket, serial, buffer_size).await {
-                        Ok(_) => {
-                            println!("Disconnect {}", client_addr);
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    },
-                    Err(e) => {
-                        return Err(format!(
-                            "open serial port {}, baudrate = {} failed, {}",
-                            &serial_cfg.name, &serial_cfg.baudrate, e.description
-                        ));
-                    }
-                };
-            }
-            Err(e) => {
-                println!("warning: {}", e);
+        // Poll Mio for events, blocking until we get an event.
+        poll.poll(&mut events, None)?;
+
+        // Process each event.
+        for event in events.iter() {
+            // We can use the token we previously provided to `register` to
+            // determine for which socket the event is.
+            match event.token() {
+                SERVER => {
+                    // If this is an event for the server, it means a connection
+                    // is ready to be accepted.
+                    //
+                    // Accept the connection and drop it immediately. This will
+                    // close the socket and notify the client of the EOF.
+                    let (socket, addr) = server.accept()?;
+                    poll.registry().deregister(&mut server)?;
+                    println!("Connect: {}", addr);
+
+                    let serial = mio_serial::new(serial_cfg.name.as_str(), serial_cfg.baudrate)
+                        .open_native_async()?;
+                    exchange::exchange(socket, serial, buffer_size)?;
+                    println!("Disconnect: {}", addr);
+                    poll.registry()
+                        .register(&mut server, SERVER, Interest::READABLE)?;
+                }
+                // We don't expect any events with tokens other than those we provided.
+                _ => unreachable!(),
             }
         }
     }
@@ -150,13 +102,12 @@ fn print_usage(program: &str) {
     print!("Usage: {} serial-name [ options ]{}", program, help_info);
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() {
     let mut args = env::args();
     let mut remote_ip: Option<SocketAddr> = None;
     let mut server_port = 8722;
     let mut serial_cfg: Option<SerialConfig> = None;
-    let mut buffer_size = 1024;
+    let mut buffer_size = 512;
     let program = args.next().unwrap();
     loop {
         match args.next() {
@@ -168,12 +119,12 @@ async fn main() -> Result<()> {
                         }
                         Err(e) => {
                             println!("error: {}", e);
-                            return Ok(());
+                            return;
                         }
                     },
                     None => {
                         println!("error: please specific port number");
-                        return Ok(());
+                        return;
                     }
                 },
                 "-c" => match args.next() {
@@ -183,12 +134,34 @@ async fn main() -> Result<()> {
                         }
                         Err(e) => {
                             println!("error: {}", e);
-                            return Ok(());
+                            return;
                         }
                     },
                     None => {
                         println!("error: please specific remote ip");
-                        return Ok(());
+                        return;
+                    }
+                },
+                "-b" => match args.next() {
+                    Some(buff_size) => {
+                        buffer_size = match buff_size.parse::<usize>() {
+                            Ok(buffer_size) => {
+                                if buffer_size < 512 {
+                                    println!("warning: buffer size should greater than 512 bytes");
+                                    512
+                                } else {
+                                    buffer_size
+                                }
+                            }
+                            Err(e) => {
+                                println!("error: {}", e);
+                                return;
+                            }
+                        };
+                    }
+                    None => {
+                        println!("error: please specific port number");
+                        return;
                     }
                 },
                 "-b" => match args.next() {
@@ -216,12 +189,12 @@ async fn main() -> Result<()> {
 
                 "-h" => {
                     print_usage(&program);
-                    return Ok(());
+                    return;
                 }
 
                 serial_desc => match serial_cfg {
                     Some(_) => {
-                        return Ok(());
+                        return;
                     }
                     None => match SerialConfig::form_str(serial_desc) {
                         Ok(cfg) => {
@@ -242,57 +215,50 @@ async fn main() -> Result<()> {
     match serial_cfg {
         None => {
             println!("error: no serial port specified! Try '-h' for more information");
-            return Ok(());
+            return;
         }
         Some(serial_cfg) => match remote_ip {
-            Some(remote_ip) => match TcpStream::connect(remote_ip).await {
-                Err(e) => {
-                    println!("error: {}", e.to_string());
-                }
+            Some(ipaddr) => match TcpStream::connect(ipaddr) {
                 Ok(socket) => {
-                    match tokio_serial::new(&serial_cfg.name, serial_cfg.baudrate)
+                    match mio_serial::new(serial_cfg.name.as_str(), serial_cfg.baudrate)
                         .open_native_async()
                     {
-                        Ok(serial) => match exchange(socket, serial, buffer_size).await {
-                            Ok(_) => {
-                                println!("Disconnect {}", remote_ip);
-                            }
-                            Err(e) => {
-                                println!("error: {}", e);
-                            }
-                        },
                         Err(e) => {
                             println!(
                                 "open serial port {}, baudrate = {} failed, {}",
                                 &serial_cfg.name, &serial_cfg.baudrate, e.description
                             );
                         }
-                    };
-                    return Ok(());
+                        Ok(serial) => match exchange(socket, serial, buffer_size) {
+                            Err(e) => {
+                                println!("error: {}", e.to_string());
+                            }
+                            Ok(_) => {
+                                return;
+                            }
+                        },
+                    }
+                }
+                Err(e) => {
+                    println!("error: {}", e.to_string());
                 }
             },
-            None => {
-                match ("0.0.0.0", server_port).to_socket_addrs() {
-                    Ok(mut ips) => match ips.next() {
-                        Some(ip) => match start_server(ip, serial_cfg, buffer_size).await {
-                            Err(e) => {
-                                println!("error: {}", e);
-                            }
-                            Ok(_) => {}
-                        },
-                        None => {
-                            println!("error: invaild ip address");
-                            return Ok(());
-                        }
-                    },
-                    Err(e) => {
-                        println!("error: {}", e);
-                        return Ok(());
+            None => match ("0.0.0.0", server_port).to_socket_addrs() {
+                Ok(mut addrs) => match addrs.next() {
+                    None => {
+                        println!("error: invaild ip address");
                     }
-                };
-            }
+                    Some(ipaddr) => match start_server(ipaddr, serial_cfg, buffer_size) {
+                        Err(e) => {
+                            println!("error: {}", e.to_string());
+                        }
+                        Ok(_) => {}
+                    },
+                },
+                Err(e) => {
+                    println!("error: {}", e);
+                }
+            },
         },
     }
-
-    return Ok(());
 }
